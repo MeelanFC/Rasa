@@ -1,0 +1,32 @@
+{
+  "name": "server",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch --env-file=.env src/index.ts",
+    "build": "tsc",
+    "start": "node --env-file=.env dist/index.js",
+    "test": "vitest run",
+    "seed": "tsx src/seed.ts",
+    "refresh-titles": "tsx src/refresh-titles.ts",
+    "reset-ratings": "tsx src/reset-ratings.ts",
+    "enrich-catalog": "tsx src/enrich-catalog.ts",
+    "enrich-tmdb": "tsx --env-file=.env src/enrich-tmdb.ts",
+    "evaluate": "tsx src/evaluate.ts"
+  },
+  "dependencies": {
+    "@consumet/extensions": "^1.8.8",
+    "@hono/node-server": "^1.14.1",
+    "better-sqlite3": "^11.9.1",
+    "hono": "^4.7.7",
+    "tlsclientwrapper": "^4.2.0",
+    "zod": "^3.24.2"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.12",
+    "@types/node": "^22.14.1",
+    "tsx": "^4.19.3",
+    "typescript": "^5.8.3",
+    "vitest": "^3.1.1"
+  }
+}

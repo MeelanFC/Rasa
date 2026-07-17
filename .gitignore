@@ -1,0 +1,26 @@
+# secrets
+.env
+.env.*
+!.env.example
+**/.env
+**/.env.*
+!**/.env.example
+
+# local database
+server/data/
+*.db
+*.db-shm
+*.db-wal
+
+# dependencies and build output
+node_modules/
+dist/
+*.tsbuildinfo
+*.log
+
+# editor and OS files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+desktop.ini

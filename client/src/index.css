@@ -1,0 +1,105 @@
+@import "tailwindcss";
+@plugin "tailwindcss-animate";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme {
+  --font-sans: "Inter", "Segoe UI", "Helvetica Neue", system-ui, sans-serif;
+
+  --color-background: oklch(0.13 0.02 280);
+  --color-foreground: oklch(0.97 0.01 280);
+
+  --color-card: oklch(0.17 0.025 280);
+  --color-card-foreground: oklch(0.97 0.01 280);
+
+  --color-popover: oklch(0.17 0.025 280);
+  --color-popover-foreground: oklch(0.97 0.01 280);
+
+  --color-primary: oklch(0.68 0.2 295);
+  --color-primary-foreground: oklch(0.13 0.02 280);
+
+  --color-secondary: oklch(0.25 0.03 280);
+  --color-secondary-foreground: oklch(0.97 0.01 280);
+
+  --color-muted: oklch(0.22 0.025 280);
+  --color-muted-foreground: oklch(0.7 0.02 280);
+
+  --color-accent: oklch(0.28 0.04 295);
+  --color-accent-foreground: oklch(0.97 0.01 280);
+
+  --color-destructive: oklch(0.62 0.21 25);
+  --color-destructive-foreground: oklch(0.97 0.01 280);
+
+  --color-success: oklch(0.68 0.18 145);
+  --color-success-foreground: oklch(0.13 0.02 280);
+
+  --color-warning: oklch(0.82 0.16 80);
+
+  --color-border: oklch(0.28 0.02 280 / 0.6);
+  --color-input: oklch(0.28 0.02 280);
+  --color-ring: oklch(0.68 0.2 295);
+
+  --radius-lg: 0.875rem;
+  --radius-md: 0.65rem;
+  --radius-sm: 0.4rem;
+}
+
+@layer base {
+  :root {
+    color-scheme: dark;
+  }
+
+  *,
+  *::before,
+  *::after {
+    box-sizing: border-box;
+    border-color: var(--color-border);
+  }
+
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+
+  body {
+    margin: 0;
+    min-height: 100dvh;
+    background:
+      radial-gradient(ellipse at top, oklch(0.32 0.16 295 / 0.18), transparent 55%),
+      radial-gradient(ellipse at bottom right, oklch(0.32 0.18 200 / 0.1), transparent 60%),
+      var(--color-background);
+    color: var(--color-foreground);
+    font-family: var(--font-sans);
+    font-feature-settings: "cv11", "ss01";
+    -webkit-font-smoothing: antialiased;
+  }
+
+  html, body {
+    height: 100%;
+    overflow: hidden;
+    touch-action: none; /* Prevent iOS bounce scroll */
+  }
+
+  #root {
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+  }
+
+  img {
+    display: block;
+    max-width: 100%;
+  }
+
+  button {
+    cursor: pointer;
+  }
+}
+
+@layer utilities {
+  .scrollbar-thin {
+    scrollbar-width: thin;
+    scrollbar-color: var(--color-border) transparent;
+  }
+}
