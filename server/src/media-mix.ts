@@ -7,7 +7,41 @@
  * while the model still picks the best titles WITHIN each slice.
  */
 
-/** Normalizes per-type upvote counts into shares. Types with zero ups get 0. */
+/** Per-media-type swipe record. Positive = liked + would-watch; negative = pass / dropped. */
+export interface MediaTypeTally {
+  positive: number;
+  negative: number;
+}
+
+/**
+ * Deck shares from the swipe record: each available type gets its Laplace-
+ * smoothed yes-rate, (positive + 1) / (positive + negative + 2), and the rates
+ * are normalised to sum to 1.
+ *
+ * Why a rate and not the yes-count mix the grid uses: the deck decides what to
+ * SHOW next, so the question is "how often does a card of this type get a yes",
+ * not "how many yeses so far", which is confounded by how often the type was
+ * shown. The +1/+2 prior means a type the user has never seen starts at 0.5
+ * and keeps getting explored, one yes does not make a type the whole deck, and
+ * twenty passes with no yes fade a type to ~1/22 but never to zero. The old
+ * yes-count mix did go to zero: one liked anime made the deck 100% anime with
+ * no way back, because a type that is never shown can never be liked.
+ */
+export function mediaTypeDeckShares(
+  tally: Record<string, MediaTypeTally>,
+  availableTypes: Iterable<string>,
+): Record<string, number> {
+  const rates: Array<[string, number]> = [];
+  for (const type of new Set(availableTypes)) {
+    const counts = tally[type] ?? { positive: 0, negative: 0 };
+    rates.push([type, (counts.positive + 1) / (counts.positive + counts.negative + 2)]);
+  }
+  const total = rates.reduce((sum, [, rate]) => sum + rate, 0);
+  if (total === 0) return {};
+  return Object.fromEntries(rates.map(([type, rate]) => [type, rate / total]));
+}
+
+/** Normalizes per-type yes counts (liked + would-watch) into shares. Types with zero get 0. */
 export function mediaTypeUpShares(
   upCounts: Record<string, number>,
 ): Record<string, number> {

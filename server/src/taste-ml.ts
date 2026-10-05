@@ -247,6 +247,7 @@ export function rankByMlScore<T extends {
   malId: number;
   features: string[];
   popularity: number;
+  popularityScore?: number;
   synopsis: string;
 }>(
   candidates: T[],
@@ -262,6 +263,8 @@ export function rankByMlScore<T extends {
       if (b.mlScore !== a.mlScore) {
         return b.mlScore - a.mlScore;
       }
-      return b.popularity - a.popularity;
+      // Tiebreak on the source-aware score (popularity.ts); raw popularity is a
+      // RANK for anime, so "bigger wins" would surface the most obscure title.
+      return (b.popularityScore ?? b.popularity) - (a.popularityScore ?? a.popularity);
     });
 }

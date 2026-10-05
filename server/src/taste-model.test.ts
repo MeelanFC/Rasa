@@ -1,5 +1,14 @@
 import { describe, expect, it } from "vitest";
-import { trainTasteModel, modelFeatures, type TasteExample } from "./taste-model.js";
+import {
+  AMBIGUOUS_DOWNVOTE_WEIGHT,
+  hasEnoughOfEachClass,
+  modelFeatures,
+  tasteExampleLabel,
+  tasteExampleWeight,
+  trainTasteModel,
+  WATCHLIST_EXAMPLE_WEIGHT,
+  type TasteExample,
+} from "./taste-model.js";
 
 describe("trainTasteModel", () => {
   it("learns to separate liked from disliked patterns", () => {
@@ -48,5 +57,30 @@ describe("trainTasteModel", () => {
       { minDocFrequency: 5 },
     );
     expect(model.dimension).toBe(0);
+  });
+});
+
+describe("swipe -> training example rules", () => {
+  it("counts a would-watch save as a positive, a little below a liked verdict", () => {
+    expect(tasteExampleLabel("save")).toBe(1);
+    expect(tasteExampleLabel("up")).toBe(1);
+    expect(tasteExampleWeight({ kind: "save", at: "2026-10-01 10:00:00" })).toBe(WATCHLIST_EXAMPLE_WEIGHT);
+    expect(tasteExampleWeight({ kind: "up", at: "2026-10-01 10:00:00" })).toBe(1);
+    expect(WATCHLIST_EXAMPLE_WEIGHT).toBeLessThan(1);
+    expect(WATCHLIST_EXAMPLE_WEIGHT).toBeGreaterThan(0.5);
+  });
+
+  it("discounts only the downvotes cast before the button semantics changed", () => {
+    expect(tasteExampleLabel("down")).toBe(0);
+    expect(tasteExampleWeight({ kind: "down", at: "2026-07-01 10:00:00" })).toBe(AMBIGUOUS_DOWNVOTE_WEIGHT);
+    expect(tasteExampleWeight({ kind: "down", at: "2026-10-01 10:00:00" })).toBe(1);
+  });
+
+  it("requires enough examples of both classes before the classifier is trusted", () => {
+    const up: TasteExample = { features: ["genre:Action"], synopsis: "", label: 1 };
+    const down: TasteExample = { features: ["genre:Drama"], synopsis: "", label: 0 };
+    expect(hasEnoughOfEachClass([up, up, up, down, down, down])).toBe(true);
+    expect(hasEnoughOfEachClass(Array.from({ length: 10 }, () => up))).toBe(false);
+    expect(hasEnoughOfEachClass([up, up, up, down, down])).toBe(false);
   });
 });

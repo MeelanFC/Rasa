@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   allocateMediaQuotas,
+  mediaTypeDeckShares,
   mediaTypeUpShares,
   pickMediaTypeWeighted,
 } from "./media-mix.js";
@@ -74,5 +75,46 @@ describe("pickMediaTypeWeighted", () => {
     expect(
       pickMediaTypeWeighted({ anime: 0.5, movie: 0.5 }, new Set(["movie"]), () => 0.99),
     ).toBe("movie");
+  });
+});
+
+describe("mediaTypeDeckShares", () => {
+  it("gives every available type a share, including ones with no swipes yet", () => {
+    const shares = mediaTypeDeckShares(
+      { anime: { positive: 1, negative: 0 } },
+      ["anime", "movie", "tv"],
+    );
+    expect(Object.keys(shares).sort()).toEqual(["anime", "movie", "tv"]);
+    expect(shares.movie).toBeGreaterThan(0);
+    expect(shares.anime).toBeGreaterThan(shares.movie!);
+    const total = Object.values(shares).reduce((a, b) => a + b, 0);
+    expect(total).toBeCloseTo(1);
+  });
+
+  it("fades a type the user keeps passing on without ever dropping it", () => {
+    const shares = mediaTypeDeckShares(
+      { anime: { positive: 12, negative: 4 }, manhwa: { positive: 0, negative: 20 } },
+      ["anime", "manhwa"],
+    );
+    expect(shares.manhwa).toBeGreaterThan(0);
+    expect(shares.manhwa).toBeLessThan(0.1);
+  });
+
+  it("ranks by yes-rate, not volume: a type shown less but liked more often leads", () => {
+    const shares = mediaTypeDeckShares(
+      { anime: { positive: 30, negative: 70 }, movie: { positive: 6, negative: 2 } },
+      ["anime", "movie"],
+    );
+    expect(shares.movie).toBeGreaterThan(shares.anime!);
+  });
+
+  it("ignores tallies for types with no candidates and returns {} when nothing is available", () => {
+    const shares = mediaTypeDeckShares(
+      { anime: { positive: 5, negative: 0 }, tv: { positive: 9, negative: 0 } },
+      ["anime"],
+    );
+    expect(Object.keys(shares)).toEqual(["anime"]);
+    expect(shares.anime).toBeCloseTo(1);
+    expect(mediaTypeDeckShares({}, [])).toEqual({});
   });
 });

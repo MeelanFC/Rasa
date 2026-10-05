@@ -22,11 +22,18 @@ export interface RatedFeatures {
 export interface CandidateAnime {
   malId: number;
   features: string[];
+  /** Raw source number. NOT comparable across sources: a MAL rank for anime,
+   *  a TMDB score for film/TV, a follower count for manhwa (see popularity.ts). */
   popularity: number;
+  /** Unified 0..1 popularity, higher = more popular (popularityScore()).
+   *  Optional so pure ranking tests need not supply a media type. */
+  popularityScore?: number;
 }
 
 const EXPLORATION_RATE = 0.15;
-const POPULARITY_NORMALIZER = 2_000_000;
+/** Among equally informative cold-start picks, favour titles the user can
+ *  actually recognise; unknown niche shows give no anchor to judge from. */
+const COLD_START_POPULARITY_WEIGHT = 0.15;
 
 export function parseFeatureTags(
   genresJson: string,
@@ -100,7 +107,7 @@ export function sortByRecommendationScore<T extends CandidateAnime>(
     const scoreDiff =
       scoreFeatures(b.features, weights) - scoreFeatures(a.features, weights);
     if (scoreDiff !== 0) return scoreDiff;
-    return b.popularity - a.popularity;
+    return (b.popularityScore ?? b.popularity) - (a.popularityScore ?? a.popularity);
   });
 }
 
@@ -184,10 +191,7 @@ export function infoGainScore<T extends CandidateAnime>(
   }
 
   const normalized = gain / candidate.features.length;
-  const popularityBoost = Math.min(candidate.popularity, POPULARITY_NORMALIZER) /
-    POPULARITY_NORMALIZER;
-
-  return normalized + popularityBoost * 0.15;
+  return normalized + (candidate.popularityScore ?? 0) * COLD_START_POPULARITY_WEIGHT;
 }
 
 function pickByInfoGain<T extends CandidateAnime>(
