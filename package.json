@@ -12,10 +12,10 @@
     "client",
     "server"
   ],
+  "engines": {
+    "node": ">=22.9.0"
+  },
   "devDependencies": {
     "concurrently": "^9.1.2"
-  },
-  "dependencies": {
-    "better-sqlite3": "^12.10.0"
   }
 }

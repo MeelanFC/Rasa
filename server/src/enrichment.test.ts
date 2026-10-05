@@ -55,6 +55,7 @@ const readyRow = {
   mangadex_id: null,
   chapter_count: null,
   features_json: '["genre:Action"]',
+  franchise_key: null,
   cached_at: "2026-01-01",
 };
 
@@ -173,6 +174,10 @@ describe("ensureTasteEnriched", () => {
       isAdult: false,
       genres: [],
       studios: [],
+      categorizedTags: [],
+      animationStudios: [],
+      productionStudios: [],
+      anilistStaff: [],
     });
 
     await ensureTasteEnriched(1);
@@ -226,6 +231,10 @@ describe("ensureTasteEnriched", () => {
       isAdult: false,
       genres: [],
       studios: [],
+      categorizedTags: [],
+      animationStudios: [],
+      productionStudios: [],
+      anilistStaff: [],
     });
     vi.mocked(fetchAnimeRelations).mockResolvedValue([
       { relation: "Sequel", entries: [{ malId: 2, type: "anime", name: "X" }] },
@@ -273,6 +282,10 @@ describe("scheduleTasteEnrichment", () => {
       isAdult: false,
       genres: [],
       studios: [],
+      categorizedTags: [],
+      animationStudios: [],
+      productionStudios: [],
+      anilistStaff: [],
     });
 
     scheduleTasteEnrichment(1);

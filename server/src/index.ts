@@ -350,5 +350,5 @@ serve({ fetch: app.fetch, port }, () => {
     const max = Number(process.env.ANIKINATOR_BULK_ENRICH_MAX ?? "24");
     scheduleBulkTasteEnrichment({ maxTitles: Number.isFinite(max) ? max : 24 });
   }
-  console.log(`Anikinator API running at http://localhost:${port}`);
+  console.log(`Rasa API running at http://localhost:${port}`);
 });

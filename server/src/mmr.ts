@@ -74,7 +74,7 @@ export function selectKDiverse<T extends MmrCandidate>(
 export function pickWithMmr<T extends MmrCandidate>(
   ranked: T[],
   recentlyServedFeatures: Set<string>,
-  random: () => number,
+  _random: () => number,
   lambda = 0.5,
   poolSize = 25,
 ): T | undefined {
