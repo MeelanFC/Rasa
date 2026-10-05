@@ -78,7 +78,9 @@ export function keyForRow(row: {
 }
 
 /**
- * One entry per franchise; keeps the candidate with higher popularity when tied.
+ * One entry per franchise; keeps the candidate with the higher `popularity`.
+ * Callers pass the unified popularityScore() here, not the raw column: for
+ * anime the raw value is a MAL rank, where bigger means less popular.
  */
 export function dedupeByFranchise<T extends FranchiseKeyed & { popularity?: number }>(
   items: T[],

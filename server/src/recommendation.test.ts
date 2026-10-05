@@ -3,7 +3,6 @@ import {
   buildFeatureWeights,
   infoGainScore,
   isColdStart,
-  pickNextCandidate,
   pickNextCandidateWithMl,
   sortByRecommendationScore,
 } from "./recommendation.js";
@@ -73,14 +72,15 @@ describe("binary taste engine", () => {
       { features: ["Sci-Fi"], reaction: "up" },
     ]);
 
-    const pick = pickNextCandidate(
+    const pick = pickNextCandidateWithMl(
       [
-        { malId: 1, features: ["Romance"], popularity: 900 },
-        { malId: 2, features: ["Sci-Fi"], popularity: 50 },
+        { malId: 1, features: ["Romance"], popularity: 900, synopsis: "" },
+        { malId: 2, features: ["Sci-Fi"], popularity: 50, synopsis: "" },
       ],
       weights,
       20,
       [],
+      undefined,
       () => 0.99,
     );
 
@@ -135,11 +135,11 @@ describe("information gain scoring", () => {
 describe("cold-start picks", () => {
   it("explores new feature space, not just popularity", () => {
     const candidates = [
-      { malId: 1, features: ["Action", "Shounen"], popularity: 1_000_000 },
-      { malId: 2, features: ["Action", "Shounen"], popularity: 900_000 },
-      { malId: 3, features: ["Action", "Shounen"], popularity: 80_000 },
-      { malId: 4, features: ["Slice of Life", "Iyashikei"], popularity: 50_000 },
-      { malId: 5, features: ["Mecha", "Military"], popularity: 50_000 },
+      { malId: 1, features: ["Action", "Shounen"], popularity: 1_000_000, synopsis: "" },
+      { malId: 2, features: ["Action", "Shounen"], popularity: 900_000, synopsis: "" },
+      { malId: 3, features: ["Action", "Shounen"], popularity: 80_000, synopsis: "" },
+      { malId: 4, features: ["Slice of Life", "Iyashikei"], popularity: 50_000, synopsis: "" },
+      { malId: 5, features: ["Mecha", "Military"], popularity: 50_000, synopsis: "" },
     ];
 
     const rated = [
@@ -148,11 +148,12 @@ describe("cold-start picks", () => {
 
     const picks = new Set<number>();
     for (let i = 0; i < 50; i++) {
-      const pick = pickNextCandidate(
+      const pick = pickNextCandidateWithMl(
         candidates,
         {},
         0,
         rated,
+        undefined,
         () => Math.random(),
       );
       if (pick) picks.add(pick.malId);

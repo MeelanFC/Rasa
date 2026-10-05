@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { getDb, getGenreNextPage, incrementGenrePage, clearAnimeCache } from "./db.js";
 import { isCatalogStarved, runCatalogExpansion } from "./service.js";
 

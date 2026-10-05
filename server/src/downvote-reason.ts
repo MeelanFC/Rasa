@@ -27,6 +27,9 @@ export function downReasonCategoryBoost(
       return matchesCategory(category, ["genre", "theme", "demo", "alist-tag"]) ? 1.18 : 1;
     case "length":
       return matchesCategory(category, ["episodes", "format"]) ? 1.2 : 1;
+    case "dropped":
+      // A verdict on the whole title; no single feature category to blame.
+      return 1;
     default: {
       const _exhaustive: never = reason;
       return _exhaustive;

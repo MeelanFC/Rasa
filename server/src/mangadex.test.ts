@@ -37,6 +37,8 @@ describe("parseManhwaEntity", () => {
         originalLanguage: "ko",
         lastChapter: "200",
         status: "completed",
+        year: 2018,
+        contentRating: "safe",
         tags: [],
       },
       relationships: [

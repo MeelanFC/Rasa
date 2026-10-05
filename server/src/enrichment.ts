@@ -276,7 +276,9 @@ async function ensureManhwaPresentationCached(malId: number): Promise<void> {
   }
 }
 
-async function enrichManhwaTaste(malId: number, existing: NonNullable<ReturnType<typeof getAnimeById>>): Promise<void> {
+async function enrichManhwaTaste(
+  existing: NonNullable<ReturnType<typeof getAnimeById>>,
+): Promise<void> {
   const parsed = parsedFromRow(existing);
   const mangadexMeta = existing.mangadex_id
     ? await fetchMangaDexTasteMeta(existing.mangadex_id)
@@ -369,7 +371,7 @@ export async function ensureTasteEnriched(malId: number): Promise<void> {
   const existing = getAnimeById(malId);
   if (existing?.media_type === "manhwa") {
     if (!isTasteEnriched(existing.features_json)) {
-      await enrichManhwaTaste(malId, existing);
+      await enrichManhwaTaste(existing);
     }
     return;
   }

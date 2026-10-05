@@ -135,8 +135,12 @@ describe("insertRating", () => {
     `);
     seedAnime(db, 42);
 
+    // `db` is a describe-scoped `let`; TS cannot keep it narrowed inside the callback.
+    const brokenSchemaDb = db;
     expect(() => {
-      db.prepare("INSERT INTO ratings (mal_id, reaction) VALUES (?, ?)").run(42, "down");
+      brokenSchemaDb
+        .prepare("INSERT INTO ratings (mal_id, reaction) VALUES (?, ?)")
+        .run(42, "down");
     }).toThrow(/rated_at/);
 
     migrateDatabase(db);

@@ -21,6 +21,53 @@ export interface TasteExample {
   weight?: number;
 }
 
+/** A would-watch save trains as a positive, a little below a watched-and-liked
+ *  verdict: it is intent, not confirmation. Only the RATIO between positive
+ *  examples matters here, since trainTasteModel balances the total mass per
+ *  class; this just keeps a confirmed like a touch louder than a save. */
+export const WATCHLIST_EXAMPLE_WEIGHT = 0.8;
+
+/** Before this date a thumbs-down conflated "never heard of it" with "watched
+ *  and disliked" (no neutral button existed), so those downvotes count less. */
+export const DOWNVOTE_SEMANTICS_EPOCH = "2026-07-16";
+export const AMBIGUOUS_DOWNVOTE_WEIGHT = 0.4;
+
+/** A classifier needs examples of BOTH classes. Below this many per class the
+ *  cosine ranker, which copes with a one-sided history, ranks instead. */
+export const MIN_EXAMPLES_PER_CLASS = 3;
+
+/** One explicit swipe: a vote (up / down) or a would-watch save. */
+export interface TasteSignal {
+  kind: "up" | "down" | "save";
+  /** When it was recorded (SQLite datetime('now') text); only the epoch check reads it. */
+  at: string;
+}
+
+export function tasteExampleLabel(kind: TasteSignal["kind"]): 0 | 1 {
+  return kind === "down" ? 0 : 1;
+}
+
+export function tasteExampleWeight(signal: TasteSignal): number {
+  if (signal.kind === "save") return WATCHLIST_EXAMPLE_WEIGHT;
+  if (signal.kind === "down" && signal.at < DOWNVOTE_SEMANTICS_EPOCH) {
+    return AMBIGUOUS_DOWNVOTE_WEIGHT;
+  }
+  return 1;
+}
+
+export function hasEnoughOfEachClass(
+  examples: TasteExample[],
+  minPerClass = MIN_EXAMPLES_PER_CLASS,
+): boolean {
+  let positives = 0;
+  let negatives = 0;
+  for (const example of examples) {
+    if (example.label === 1) positives += 1;
+    else negatives += 1;
+  }
+  return positives >= minPerClass && negatives >= minPerClass;
+}
+
 export interface TasteModel {
   /** P(user likes) in [0,1] for a candidate's tag features + synopsis. */
   predict(features: string[], synopsis: string): number;

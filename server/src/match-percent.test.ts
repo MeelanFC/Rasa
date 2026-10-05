@@ -46,7 +46,7 @@ describe("calibrateMatchPercent (relative match strength)", () => {
 
   it("uses a popularity-based gradient during cold start (useMl=false)", () => {
     const obscure = calibrateMatchPercent(0, pool, false, 0);
-    const popular = calibrateMatchPercent(0, pool, false, 3_000_000);
+    const popular = calibrateMatchPercent(0, pool, false, 1);
     expect(obscure).toBe(35);
     expect(popular).toBeLessThanOrEqual(75);
     expect(popular).toBeGreaterThan(obscure);

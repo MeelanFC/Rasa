@@ -29,11 +29,13 @@ export function calibrateMatchPercent(
   mlScore: number,
   pool: PoolScoreReference,
   useMl: boolean,
-  popularity: number,
+  popularityScore: number,
 ): number {
   if (!useMl) {
-    // Cold start: weak taste signal, lean on popularity for a gentle gradient.
-    return clamp(Math.round(35 + popularity / 1_500_000), DISPLAY_MIN, COLD_START_MAX);
+    // Cold start: weak taste signal, lean on popularity (the unified 0..1 score
+    // from popularity.ts) for a gentle 35..75 gradient.
+    const known = Math.max(0, Math.min(1, popularityScore));
+    return clamp(Math.round(35 + 40 * known), DISPLAY_MIN, COLD_START_MAX);
   }
 
   const range = pool.max - pool.median;

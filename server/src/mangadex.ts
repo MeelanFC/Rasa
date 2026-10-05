@@ -96,11 +96,6 @@ interface MangaDexCollectionResponse {
   total: number;
 }
 
-interface MangaDexEntityResponse {
-  result: string;
-  data: MangaDexMangaEntity;
-}
-
 export interface MangaDexTasteMeta {
   tags: string[];
   tasteFeatures: string[];

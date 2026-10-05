@@ -126,7 +126,10 @@ async function throttle(): Promise<void> {
   lastRequestAt = Date.now();
 }
 
-async function tmdbFetch<T>(path: string, schema: z.ZodType<T>): Promise<T> {
+async function tmdbFetch<S extends z.ZodTypeAny>(
+  path: string,
+  schema: S,
+): Promise<z.output<S>> {
   await throttle();
   const response = await fetchWithRetry(
     withApiKey(`${TMDB_BASE}${path}`),

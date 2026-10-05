@@ -611,23 +611,28 @@ export function getRatingCount(): number {
   return row.count;
 }
 
-export function getProfileHistory(): Array<AnimeCard & { reaction: Reaction; ratedAt: string }> {
+export function getProfileHistory(): Array<
+  AnimeCard & { reaction: Reaction; ratedAt: string; downReason: DownvoteReason | null }
+> {
   const rows = getDb()
     .prepare(
       `
-    SELECT a.*, r.reaction, r.rated_at
+    SELECT a.*, r.reaction, r.rated_at, r.down_reason
     FROM ratings r
     JOIN anime a ON a.mal_id = r.mal_id
     ORDER BY r.rated_at DESC
     LIMIT 100
   `,
     )
-    .all() as Array<AnimeRow & { reaction: Reaction; rated_at: string }>;
+    .all() as Array<
+    AnimeRow & { reaction: Reaction; rated_at: string; down_reason: DownvoteReason | null }
+  >;
 
   return rows.map((row) => ({
     ...rowToCard(row),
     reaction: row.reaction,
     ratedAt: row.rated_at,
+    downReason: row.down_reason ?? null,
   }));
 }
 

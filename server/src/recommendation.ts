@@ -22,11 +22,18 @@ export interface RatedFeatures {
 export interface CandidateAnime {
   malId: number;
   features: string[];
+  /** Raw source number. NOT comparable across sources: a MAL rank for anime,
+   *  a TMDB score for film/TV, a follower count for manhwa (see popularity.ts). */
   popularity: number;
+  /** Unified 0..1 popularity, higher = more popular (popularityScore()).
+   *  Optional so pure ranking tests need not supply a media type. */
+  popularityScore?: number;
 }
 
 const EXPLORATION_RATE = 0.15;
-const POPULARITY_NORMALIZER = 2_000_000;
+/** Among equally informative cold-start picks, favour titles the user can
+ *  actually recognise; unknown niche shows give no anchor to judge from. */
+const COLD_START_POPULARITY_WEIGHT = 0.15;
 
 export function parseFeatureTags(
   genresJson: string,
@@ -100,7 +107,7 @@ export function sortByRecommendationScore<T extends CandidateAnime>(
     const scoreDiff =
       scoreFeatures(b.features, weights) - scoreFeatures(a.features, weights);
     if (scoreDiff !== 0) return scoreDiff;
-    return b.popularity - a.popularity;
+    return (b.popularityScore ?? b.popularity) - (a.popularityScore ?? a.popularity);
   });
 }
 
@@ -116,23 +123,8 @@ export interface PickMlOptions {
   recentItemsFeatures?: string[][];
 }
 
-export function sortByMlTasteScore<T extends ScorableCandidate>(
-  candidates: T[],
-  weights: FeatureWeights,
-  ratingCount: number,
-  rated: RatedFeatures[],
-  options: PickMlOptions,
-): T[] {
-  const ctx = buildPickMlContext(rated, weights, ratingCount, options);
-  const ranked = rankByMlScore(candidates, ctx, (features) =>
-    scoreFeatures(features, weights),
-  );
-  return ranked.map(({ mlScore: _mlScore, ...rest }) => rest as T);
-}
-
 function buildPickMlContext(
   rated: RatedFeatures[],
-  weights: FeatureWeights,
   ratingCount: number,
   options: PickMlOptions,
 ): TasteMlContext {
@@ -157,11 +149,11 @@ export function sortCandidatesForPick<T extends ScorableCandidate>(
     return candidates;
   }
 
-  const ctx = buildPickMlContext(rated, weights, ratingCount, options);
-  const ranked = rankByMlScore(candidates, ctx, (features) =>
+  const ctx = buildPickMlContext(rated, ratingCount, options);
+  // rankByMlScore returns copies that also carry mlScore; a T & { mlScore } is still a T.
+  return rankByMlScore(candidates, ctx, (features) =>
     scoreFeatures(features, weights),
   );
-  return ranked.map(({ mlScore: _mlScore, ...rest }) => rest as T);
 }
 
 export function isColdStart(ratingCount: number): boolean {
@@ -199,10 +191,7 @@ export function infoGainScore<T extends CandidateAnime>(
   }
 
   const normalized = gain / candidate.features.length;
-  const popularityBoost = Math.min(candidate.popularity, POPULARITY_NORMALIZER) /
-    POPULARITY_NORMALIZER;
-
-  return normalized + popularityBoost * 0.15;
+  return normalized + (candidate.popularityScore ?? 0) * COLD_START_POPULARITY_WEIGHT;
 }
 
 function pickByInfoGain<T extends CandidateAnime>(
@@ -233,16 +222,6 @@ function pickByInfoGain<T extends CandidateAnime>(
  * Cold start picks for maximum learning (info gain).
  * Warm picks the best taste match; sometimes explores a high-uncertainty pick.
  */
-export function pickNextCandidate<T extends CandidateAnime>(
-  candidates: T[],
-  weights: FeatureWeights,
-  ratingCount: number,
-  rated: RatedFeatures[] = [],
-  random: () => number = Math.random,
-): T | undefined {
-  return pickNextCandidateWithMl(candidates, weights, ratingCount, rated, undefined, random);
-}
-
 export function pickNextCandidateWithMl<T extends ScorableCandidate>(
   candidates: T[],
   weights: FeatureWeights,
@@ -263,10 +242,13 @@ export function pickNextCandidateWithMl<T extends ScorableCandidate>(
   // fall back to cosine ranker otherwise.
   let ranked: T[];
   if (tasteModel) {
-    ranked = [...candidates]
-      .map((c) => ({ ...c, _p: tasteModel.predict(c.features, c.synopsis) }))
-      .sort((a, b) => b._p - a._p)
-      .map(({ _p: _, ...rest }) => rest as T);
+    const probability = new Map<T, number>();
+    for (const candidate of candidates) {
+      probability.set(candidate, tasteModel.predict(candidate.features, candidate.synopsis));
+    }
+    ranked = [...candidates].sort(
+      (a, b) => (probability.get(b) ?? 0) - (probability.get(a) ?? 0),
+    );
   } else if (mlOptions !== undefined) {
     ranked = sortCandidatesForPick(candidates, weights, ratingCount, rated, mlOptions);
   } else {
@@ -275,16 +257,17 @@ export function pickNextCandidateWithMl<T extends ScorableCandidate>(
 
   // Hard diversity filter: skip candidates that share >70% feature overlap with any of the last 5 served items.
   if (mlOptions?.recentItemsFeatures && mlOptions.recentItemsFeatures.length > 0) {
+    const recentSets = mlOptions.recentItemsFeatures
+      .filter((recent) => recent.length > 0)
+      .map((recent) => ({ set: new Set(recent), size: recent.length }));
     const filtered = ranked.filter((cand) => {
       if (cand.features.length === 0) return true;
-      for (const recent of mlOptions.recentItemsFeatures!) {
-        if (recent.length === 0) continue;
+      for (const recent of recentSets) {
         let intersection = 0;
-        const recentSet = new Set(recent);
         for (const f of cand.features) {
-          if (recentSet.has(f)) intersection++;
+          if (recent.set.has(f)) intersection++;
         }
-        const overlap = intersection / Math.min(cand.features.length, recent.length);
+        const overlap = intersection / Math.min(cand.features.length, recent.size);
         if (overlap > 0.7) {
           return false;
         }
@@ -315,26 +298,4 @@ export function pickNextCandidateWithMl<T extends ScorableCandidate>(
   }
 
   return ranked[0];
-}
-
-export function rankTopRecommendations<T extends CandidateAnime>(
-  candidates: T[],
-  weights: FeatureWeights,
-  limit: number,
-): T[] {
-  return sortByRecommendationScore(candidates, weights).slice(0, limit);
-}
-
-export function rankTopRecommendationsMl<T extends ScorableCandidate>(
-  candidates: T[],
-  weights: FeatureWeights,
-  ratingCount: number,
-  rated: RatedFeatures[],
-  options: PickMlOptions,
-  limit: number,
-): T[] {
-  return sortCandidatesForPick(candidates, weights, ratingCount, rated, options).slice(
-    0,
-    limit,
-  );
 }

@@ -71,15 +71,22 @@ import { calibrateMatchPercent } from "./match-percent.js";
 import { humanizeTasteSignals } from "./taste-signals.js";
 import {
   allocateMediaQuotas,
+  mediaTypeDeckShares,
   mediaTypeUpShares,
   pickMediaTypeWeighted,
+  type MediaTypeTally,
 } from "./media-mix.js";
 import { selectKDiverse } from "./mmr.js";
+import { popularityScore } from "./popularity.js";
 import {
+  hasEnoughOfEachClass,
   trainTasteModel,
   modelFeatures,
+  tasteExampleLabel,
+  tasteExampleWeight,
   type TasteModel,
   type TasteExample,
+  type TasteSignal,
 } from "./taste-model.js";
 import { fetchSimklTrendingMalIds } from "./simkl-seed.js";
 import {
@@ -91,7 +98,6 @@ import {
   isTmdbId,
   parseSyntheticId,
   type ParsedTmdb,
-  type TmdbKind,
 } from "./tmdb.js";
 import {
   getCreditScannedMalIds,
@@ -275,12 +281,14 @@ function rowFeatures(row: ReturnType<typeof getAllAnime>[number]): string[] {
 }
 
 function rowToCandidate(row: ReturnType<typeof getAllAnime>[number]) {
+  const card = rowToCard(row);
   return {
     malId: row.mal_id,
     features: rowFeatures(row),
     popularity: row.popularity,
+    popularityScore: popularityScore(card.mediaType, row.popularity),
     synopsis: row.synopsis,
-    card: rowToCard(row),
+    card,
   };
 }
 
@@ -821,7 +829,9 @@ function getUnratedCandidates(
     titleEn: candidate.card.titleEn,
     titleRomaji: candidate.card.titleRomaji,
     franchiseKey: candidate.card.franchiseKey,
-    popularity: candidate.popularity,
+    // The franchise's representative is its best-known entry. Raw popularity is
+    // a MAL rank for anime, so it would pick the most obscure special instead.
+    popularity: candidate.popularityScore,
   }));
 
   const unique = dedupeByFranchise(withTitles);
@@ -1032,23 +1042,42 @@ export function scheduleCatalogExpansionIfNeeded(): void {
 }
 
 
-/** Per-media-type upvote counts - the user's demonstrated taste mix. */
-function computeMediaUpCounts(): Record<string, number> {
-  const counts: Record<string, number> = {};
-  for (const rating of getRatings()) {
-    if (rating.reaction !== "up") continue;
-    const row = getAnimeById(rating.mal_id);
-    if (!row) continue;
-    counts[row.media_type] = (counts[row.media_type] ?? 0) + 1;
+/** Per-media-type swipe record: liked and would-watch count as a yes, pass and
+ *  dropped as a no. A title that is both saved and rated counts once, as the vote. */
+function computeMediaTally(): Record<string, MediaTypeTally> {
+  const tally: Record<string, MediaTypeTally> = {};
+  const bump = (malId: number, key: keyof MediaTypeTally) => {
+    const row = getAnimeById(malId);
+    if (!row) return;
+    const type = rowToCard(row).mediaType;
+    const entry = (tally[type] ??= { positive: 0, negative: 0 });
+    entry[key] += 1;
+  };
+  const ratings = getRatings();
+  for (const rating of ratings) {
+    bump(rating.mal_id, rating.reaction === "up" ? "positive" : "negative");
   }
-  return counts;
+  const ratedIds = new Set(ratings.map((rating) => rating.mal_id));
+  for (const malId of getWatchlistMalIds()) {
+    if (!ratedIds.has(malId)) bump(malId, "positive");
+  }
+  return tally;
+}
+
+/** Yes counts per type: the Profile grid's quota mix (volume, not rate). */
+function computeMediaPositiveCounts(): Record<string, number> {
+  return Object.fromEntries(
+    Object.entries(computeMediaTally()).map(([type, counts]) => [type, counts.positive]),
+  );
 }
 
 /**
- * Picks one media type weighted by the user's upvote mix (45% anime ups →
- * ~45% anime cards), then returns that type's pool. Re-randomizing per pick
- * keeps the feed mixed instead of letting the model's loudest cluster
- * (e.g. a fresh batch of Bollywood likes) dominate every card.
+ * Picks one media type for this card, weighted by how often the user says yes
+ * to each type (mediaTypeDeckShares), then returns that type's pool.
+ * Re-rolling per pick keeps the feed mixed instead of letting the model's
+ * loudest cluster dominate every card, and the smoothed rate keeps every type
+ * alive: a type the user keeps passing on fades, a type they have not seen
+ * yet still gets shown.
  */
 function selectMediaPool(candidates: CatalogCandidate[]): CatalogCandidate[] {
   const byType = new Map<string, CatalogCandidate[]>();
@@ -1061,14 +1090,9 @@ function selectMediaPool(candidates: CatalogCandidate[]): CatalogCandidate[] {
     return candidates;
   }
 
-  const shares = mediaTypeUpShares(computeMediaUpCounts());
+  const shares = mediaTypeDeckShares(computeMediaTally(), byType.keys());
   const chosen = pickMediaTypeWeighted(shares, new Set(byType.keys()));
-  if (!chosen) {
-    // No upvotes yet - fall back to a uniform pick among available types.
-    const types = [...byType.keys()];
-    return byType.get(types[Math.floor(Math.random() * types.length)]!) ?? candidates;
-  }
-  return byType.get(chosen) ?? candidates;
+  return (chosen ? byType.get(chosen) : undefined) ?? candidates;
 }
 
 async function pickNextMalId(): Promise<number> {
@@ -1146,7 +1170,7 @@ async function pickNextMalId(): Promise<number> {
 
     const mlOptions = buildMlPickOptions();
     const pick =
-      pickNextCandidateWithMl(pool, weights, getRatingCount(), rated, mlOptions, Math.random, getTasteModel()) ??
+      pickNextCandidateWithMl(pool, weights, tasteSignalCount(), rated, mlOptions, Math.random, getTasteModel()) ??
       pool[0] ??
       candidates[0];
 
@@ -1188,6 +1212,14 @@ async function buildNextCard(): Promise<AnimeCard> {
   recordRecentlyServedFranchise(keyForRow(row));
   recordRecentlyServedFeatures(row);
   return rowToCard(row);
+}
+
+/** Every explicit swipe on record: a vote (liked / pass / dropped) or a
+ *  would-watch save. The save is the poster-and-synopsis swiper's main yes,
+ *  so it counts toward warm-up exactly like a vote. A title that is both
+ *  saved and rated counts once. */
+function tasteSignalCount(): number {
+  return new Set([...getRatedMalIds(), ...getWatchlistMalIds()]).size;
 }
 
 function thumbsUpMalIds(): number[] {
@@ -1235,6 +1267,7 @@ export async function addToWatchlist(malId: number): Promise<AnimeCard[]> {
   assertCatalogRowReady(row, malId);
 
   insertWatchlist(malId);
+  invalidateTasteModel(); // a save is a training example now
   dropFromQueue(malId);
   dropFranchiseFromQueue(keyForRow(row));
   recordRecentlyServedFranchise(keyForRow(row));
@@ -1252,7 +1285,9 @@ export function getWatchlistEntries() {
 }
 
 export function removeFromWatchlist(malId: number): boolean {
-  return removeWatchlist(malId);
+  const removed = removeWatchlist(malId);
+  if (removed) invalidateTasteModel();
+  return removed;
 }
 
 export async function rateAnime(
@@ -1337,6 +1372,7 @@ export function getTasteMetrics(precomputedRated?: RatedFeatures[]) {
 
   return {
     reactionWeights: REACTION_WEIGHTS,
+    coldStartThreshold: COLD_START_RATINGS,
     topFeatures,
     patterns: getTastePatterns(rated),
     signals: [
@@ -1350,7 +1386,7 @@ export function getTasteMetrics(precomputedRated?: RatedFeatures[]) {
       "lead gender (AniList; else synopsis mc:*)",
       "franchise links: sequel, spin-off (relation:*)",
       "synopsis tone and story depth (tone:*, story:*)",
-      "watchlist as soft-positive taste signal",
+      "would-watch saves train the model as positives (0.8x a liked verdict)",
       "synopsis token Jaccard (content similarity, no external ML API)",
       "AniList relation + recommendation graph boost on thumbs-up",
       "IDF-weighted cosine profiles with category boosts for tags/staff",
@@ -1383,13 +1419,13 @@ export function getTasteMetrics(precomputedRated?: RatedFeatures[]) {
       },
     ],
     strategy: {
-      coldStart: `First ${COLD_START_RATINGS} ratings maximize information gain (Akinator-style)`,
+      coldStart: `First ${COLD_START_RATINGS} swipes (votes or would-watch saves) maximize information gain (Akinator-style)`,
       exploitation:
         "Warm picks: IDF cosine match vs positive profile minus negative, synopsis Jaccard, graph neighbors of loved titles",
       exploration: "~15% info-gain exploration when warm; MMR reduces tag-cluster spam",
       lovedBoost:
         "Thumbs-up registers AniList graph neighbors immediately; Jikan /recommendations still expands catalog in background",
-      watchlistSignal: "Watchlist rows count as softer positives (not shown in Discover)",
+      watchlistSignal: "Would-watch saves train the model as positives at 0.8x a liked verdict; saved titles never return to Discover",
       discoverHotPath:
         "Queue picks use cached DB + ML rank; presentation Jikan /full only when row thin",
     },
@@ -1399,11 +1435,12 @@ export function getTasteMetrics(precomputedRated?: RatedFeatures[]) {
 // ── Learned taste model: logistic regression over tags + synopsis, trained on
 // the user's own votes. Cached and rebuilt only when the rating set changes. ──
 let cachedTasteModel: TasteModel | null = null;
-let cachedTasteModelRatingCount = -1;
+/** Signal count the cached result (model or null) was built from; -1 = stale. */
+let cachedTasteModelSignalCount = -1;
 
 export function invalidateTasteModel(): void {
   cachedTasteModel = null;
-  cachedTasteModelRatingCount = -1;
+  cachedTasteModelSignalCount = -1;
 }
 
 // ── Taste combos: mined credit conjunctions the user can confirm/reject ─────
@@ -1520,37 +1557,48 @@ function withConfirmedComboBoost(
   };
 }
 
-/** Before this date a 👎 conflated "never heard of it" with "watched and
- *  disliked" (no Don't-know button existed), so those downvotes count less. */
-const DOWNVOTE_SEMANTICS_EPOCH = "2026-07-16";
-const AMBIGUOUS_DOWNVOTE_WEIGHT = 0.4;
-
+/**
+ * The learned model, trained on every explicit swipe: votes AND would-watch
+ * saves. Saves are the poster-and-synopsis swiper's main yes; until 2026-10-05
+ * they never reached the model, which then learned mostly from passes.
+ * Returns null while there are too few swipes, or too few of one class, in
+ * which case the cosine ranker takes over.
+ */
 function getTasteModel(): TasteModel | null {
   const ratings = getRatings();
-  if (ratings.length < COLD_START_RATINGS) return null;
-  if (cachedTasteModel && cachedTasteModelRatingCount === ratings.length) {
+  const ratedIds = new Set(ratings.map((r) => r.mal_id));
+  // A title rated from its detail page while still saved counts once, as the vote.
+  const savedOnly = [...getWatchlistMalIds()].filter((malId) => !ratedIds.has(malId));
+  const signalCount = ratings.length + savedOnly.length;
+  if (signalCount < COLD_START_RATINGS) return null;
+  if (cachedTasteModelSignalCount === signalCount) {
     return cachedTasteModel;
   }
+
   const examples: TasteExample[] = [];
-  for (const r of ratings) {
-    const row = getAnimeById(r.mal_id);
-    if (!row) continue;
-    const ambiguousDown =
-      r.reaction === "down" && r.rated_at < DOWNVOTE_SEMANTICS_EPOCH;
+  const pushExample = (malId: number, signal: TasteSignal) => {
+    const row = getAnimeById(malId);
+    if (!row) return;
     examples.push({
       features: rowFeatures(row),
       synopsis: row.synopsis,
-      label: r.reaction === "up" ? 1 : 0,
-      weight: ambiguousDown ? AMBIGUOUS_DOWNVOTE_WEIGHT : 1,
+      label: tasteExampleLabel(signal.kind),
+      weight: tasteExampleWeight(signal),
     });
+  };
+  for (const r of ratings) pushExample(r.mal_id, { kind: r.reaction, at: r.rated_at });
+  for (const malId of savedOnly) pushExample(malId, { kind: "save", at: "" });
+
+  cachedTasteModelSignalCount = signalCount;
+  if (examples.length < COLD_START_RATINGS || !hasEnoughOfEachClass(examples)) {
+    cachedTasteModel = null;
+    return null;
   }
-  if (examples.length < COLD_START_RATINGS) return null;
   const corpus = getAllAnime().map((row) => modelFeatures(rowFeatures(row), row.synopsis));
   cachedTasteModel = withConfirmedComboBoost(
     trainTasteModel(examples, corpus),
     getConfirmedComboFeatureSets(),
   );
-  cachedTasteModelRatingCount = ratings.length;
   return cachedTasteModel;
 }
 
@@ -1574,7 +1622,7 @@ function scoreCandidatesWithModel(
     byType.set(item.card.mediaType, list);
   }
 
-  const shares = mediaTypeUpShares(computeMediaUpCounts());
+  const shares = mediaTypeUpShares(computeMediaPositiveCounts());
   const availableByType = Object.fromEntries(
     [...byType.entries()].map(([type, list]) => [type, list.length]),
   );
@@ -1616,7 +1664,7 @@ function scoreCandidates(
     return scoreCandidatesWithModel(candidates, model);
   }
 
-  // Cold start (< COLD_START_RATINGS votes): fall back to the cosine ranker.
+  // Cold start (< COLD_START_RATINGS swipes): fall back to the cosine ranker.
   const rated = precomputedRated ?? buildRatedFeatureList();
   const mlOptions = buildMlPickOptions();
   const targetCount = PROFILE_TOP_PICKS + PROFILE_GRID_SIZE;
@@ -1627,7 +1675,7 @@ function scoreCandidates(
     watchlistFeatures: mlOptions.watchlistFeatures,
     featureCorpus: mlOptions.featureCorpus,
     lovedSynopses: mlOptions.lovedSynopses,
-    ratingCount: getRatingCount(),
+    ratingCount: tasteSignalCount(),
     coldStartThreshold: COLD_START_RATINGS,
   });
   const weightsForFallback = buildFeatureWeights(rated);
@@ -1667,7 +1715,7 @@ function scoreCandidates(
         candidate.mlScore,
         poolRef,
         ctx.useMl,
-        candidate.popularity,
+        candidate.popularityScore,
       ),
       topGenres: candidate.card.genres.slice(0, 3),
       tasteSignals,
@@ -1713,7 +1761,7 @@ export function getProfile() {
       watchlistFeatures: mlOptions.watchlistFeatures,
       featureCorpus: mlOptions.featureCorpus,
       lovedSynopses: mlOptions.lovedSynopses,
-      ratingCount: getRatingCount(),
+      ratingCount: tasteSignalCount(),
       coldStartThreshold: COLD_START_RATINGS,
     });
 
@@ -1763,8 +1811,9 @@ export function getProfile() {
     history: getProfileHistory(),
     reactionCounts: getReactionCounts(),
     totalRatings: getRatingCount(),
+    totalSignals: tasteSignalCount(),
     taste: getTasteMetrics(rated),
-    enginePhase: isColdStart(getRatingCount()) ? "learning" : "personalized",
+    enginePhase: isColdStart(tasteSignalCount()) ? "learning" : "personalized",
     catalogStats: {
       unratedFranchises: unratedCandidates.length,
       catalogEntries: getAllAnime().length,

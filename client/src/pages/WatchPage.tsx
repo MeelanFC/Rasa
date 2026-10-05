@@ -40,7 +40,9 @@ function loadWatched(malId: number): Set<string> {
 function saveWatched(malId: number, watched: Set<string>): void {
   try {
     localStorage.setItem(storageKey(malId), JSON.stringify([...watched]));
-  } catch {}
+  } catch {
+    // localStorage unavailable (private mode, embedded view): watched marks are a convenience only.
+  }
 }
 
 export function WatchPage() {
@@ -48,7 +50,7 @@ export function WatchPage() {
   const parsedId = Number(malId);
   const isValidId = Number.isInteger(parsedId) && parsedId > 0;
 
-  const [selectedEpisode, setSelectedEpisode] = useState<Episode | null>(null);
+  const [chosenEpisode, setChosenEpisode] = useState<Episode | null>(null);
   const [sourceIdx, setSourceIdx] = useState(0);
   const [watched, setWatched] = useState<Set<string>>(() =>
     isValidId ? loadWatched(parsedId) : new Set(),
@@ -81,11 +83,11 @@ export function WatchPage() {
     staleTime: 10 * 60_000,
   });
 
-  useEffect(() => {
-    if (episodesQuery.data?.episodes.length && !selectedEpisode) {
-      setSelectedEpisode(episodesQuery.data.episodes[0]);
-    }
-  }, [episodesQuery.data, selectedEpisode]);
+  // Until the user picks one, the first episode is the selection. Derived
+  // during render rather than synced from an effect.
+  const selectedEpisode = chosenEpisode ?? episodesQuery.data?.episodes[0] ?? null;
+  const selectedEpisodeId = selectedEpisode?.id;
+  const selectedEpisodeNumber = selectedEpisode?.number;
 
   // Scroll selected episode card into view when it changes
   useEffect(() => {
@@ -94,18 +96,18 @@ export function WatchPage() {
       block: "nearest",
       inline: "center",
     });
-  }, [selectedEpisode?.id]);
+  }, [selectedEpisodeId]);
 
   // Visibility-aware watch timer
   useEffect(() => {
-    if (!selectedEpisode) return;
+    if (selectedEpisodeId === undefined || selectedEpisodeNumber === undefined) return;
 
     elapsedRef.current = 0;
     lastStartRef.current = document.hidden ? null : Date.now();
     if (timerRef.current) clearTimeout(timerRef.current);
 
     const markWatched = () => {
-      const key = `e${selectedEpisode.number}`;
+      const key = `e${selectedEpisodeNumber}`;
       setWatched((prev) => {
         if (prev.has(key)) return prev;
         const next = new Set(prev);
@@ -141,10 +143,10 @@ export function WatchPage() {
       if (timerRef.current) clearTimeout(timerRef.current);
       document.removeEventListener("visibilitychange", onVisibility);
     };
-  }, [selectedEpisode?.id, parsedId]);
+  }, [selectedEpisodeId, selectedEpisodeNumber, parsedId]);
 
   const handleSelectEpisode = (ep: Episode) => {
-    setSelectedEpisode(ep);
+    setChosenEpisode(ep);
     setSourceIdx(0);
     window.scrollTo({ top: 0, behavior: "smooth" });
   };

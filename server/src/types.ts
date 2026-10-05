@@ -2,7 +2,10 @@ export const REACTIONS = ["up", "down"] as const;
 
 export type Reaction = (typeof REACTIONS)[number];
 
-export const DOWNVOTE_REASONS = ["pacing", "art", "genre", "length"] as const;
+/** Optional detail on a down vote. The first four are "why" chips; `dropped`
+ *  means the user started watching and did not finish - a verdict on a title
+ *  they tried, not a pass on a poster. */
+export const DOWNVOTE_REASONS = ["pacing", "art", "genre", "length", "dropped"] as const;
 
 export type DownvoteReason = (typeof DOWNVOTE_REASONS)[number];
 
@@ -12,6 +15,8 @@ export const REACTION_WEIGHTS: Record<Reaction, number> = {
   down: -3,
 };
 
+/** Explicit swipes (votes or would-watch saves) before the learned model
+ *  takes over from info-gain exploration. */
 export const COLD_START_RATINGS = 10;
 
 export type FeatureWeights = Record<string, number>;

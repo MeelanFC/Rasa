@@ -12,7 +12,7 @@ import { tokenizeSynopsis } from "./synopsis-tokens.js";
 import { keyForRow } from "./franchise.js";
 
 interface Row {
-  mal_id: number; title_en: string; synopsis: string;
+  mal_id: number; title_en: string; title_jp: string; synopsis: string;
   genres: string; themes: string; demographics: string;
   features_json: string; franchise_key: string | null; popularity: number; media_type: string;
 }
@@ -27,7 +27,7 @@ function titleFeatures(row: Row): string[] {
 
 const db = getDb();
 const catalog = db.prepare(
-  "SELECT mal_id,title_en,synopsis,genres,themes,demographics,features_json,franchise_key,popularity,media_type FROM anime",
+  "SELECT mal_id,title_en,title_jp,synopsis,genres,themes,demographics,features_json,franchise_key,popularity,media_type FROM anime",
 ).all() as Row[];
 const ratings = (db.prepare("SELECT mal_id,reaction,rated_at FROM ratings ORDER BY rated_at ASC").all() as Rating[]);
 

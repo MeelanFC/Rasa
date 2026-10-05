@@ -178,10 +178,7 @@ describe("preview queue", () => {
     mockRatedMalIds.clear();
     mockWatchlistMalIds.clear();
 
-    const ratedCard = sampleCard(3, "Frieren");
     mockRatedMalIds.add(3);
-
-    const watchlistCard = sampleCard(4, "Demon Slayer");
     mockWatchlistMalIds.add(4);
 
     pushQueue(sampleCard(3, "Frieren")); // Should be rejected since exact malId is rated

@@ -60,6 +60,10 @@ vi.mock("./db.js", () => ({
     meh: 0,
   }),
   getUserReaction: () => null,
+  getTasteComboRows: () => [],
+  setTasteComboStatus: vi.fn(),
+  loadTasteNeighborsFromDb: () => [],
+  upsertTasteNeighbor: vi.fn(),
   insertRating: vi.fn(),
   rowToCard: (row: Row) => ({
     malId: row.mal_id,
@@ -82,13 +86,19 @@ vi.mock("./db.js", () => ({
   insertWatchStreamsIntoDb: vi.fn(),
 }));
 
-function seedRow(malId: number, titleEn: string, franchiseKey: string | null, features: string[]): void {
+function seedRow(
+  malId: number,
+  titleEn: string,
+  franchiseKey: string | null,
+  features: string[],
+  popularity = 50_000 - malId,
+): void {
   animeRows.set(malId, {
     mal_id: malId, title_en: titleEn, title_jp: titleEn,
     synopsis: "A long enough synopsis so the catalog readiness check passes for these profile tests.",
     image_url: "https://cdn.example.com/poster.jpg",
     genres: '["Action"]', themes: "[]", demographics: "[]",
-    score: 8, popularity: 50_000 - malId, media_type: "anime",
+    score: 8, popularity, media_type: "anime",
     mangadex_id: null, chapter_count: null,
     features_json: JSON.stringify(features), franchise_key: franchiseKey, cached_at: "2026-01-01",
   });
@@ -159,5 +169,83 @@ describe("Profile recommendations exclude rated/watchlisted franchises", () => {
     expect(surfaced.has(301)).toBe(false);
     expect(surfaced.has(300)).toBe(false);
     expect(surfaced.size).toBeGreaterThan(0);
+  });
+});
+
+describe("Profile ranks with the swiper's real signals", () => {
+  beforeEach(() => {
+    animeRows.clear();
+    ratedMalIds = new Set();
+    ratedFranchiseKeys = new Set();
+    watchlistMalIds = new Set();
+    watchlistFranchiseKeys = new Set();
+    ratings = [];
+    resetPreviewQueueForTests();
+    resetTasteGraphForTests();
+    resetDiscoverStateForTests();
+  });
+
+  afterEach(() => {
+    resetPreviewQueueForTests();
+    resetDiscoverStateForTests();
+    vi.clearAllMocks();
+  });
+
+  it("represents a franchise by its most popular entry, not the highest MAL rank number", async () => {
+    // For anime the stored popularity is a MAL RANK: 12 is a household name,
+    // 9,000 is a special almost nobody has seen.
+    seedRow(500, "Naruto", "naruto", ["genre:Action"], 12);
+    seedRow(501, "Naruto: Special", "naruto", ["genre:Action"], 9_000);
+    for (let i = 600; i < 606; i += 1) seedRow(i, `Control ${i}`, `control-${i}`, ["genre:Action"], 20_000 + i);
+
+    const { getProfile } = await import("./service.js");
+    const profile = getProfile();
+
+    const surfaced = [...profile.topPicks, ...profile.recommendations].map((p) => p.malId);
+    expect(surfaced).toContain(500);
+    expect(surfaced).not.toContain(501);
+    expect(profile.topPicks[0]?.malId).toBe(500);
+  });
+
+  it("counts would-watch saves toward warm-up", async () => {
+    for (let i = 700; i < 712; i += 1) seedRow(i, `Saved ${i}`, `saved-${i}`, ["genre:SciFi"]);
+    seedRow(720, "Unrated SciFi", "unrated-scifi", ["genre:SciFi"]);
+    watchlistMalIds = new Set(Array.from({ length: 10 }, (_, k) => 700 + k));
+    watchlistFranchiseKeys = new Set([...watchlistMalIds].map((id) => `saved-${id}`));
+
+    const { getProfile } = await import("./service.js");
+    const profile = getProfile();
+
+    expect(profile.totalRatings).toBe(0);
+    expect(profile.totalSignals).toBe(10);
+    expect(profile.enginePhase).toBe("personalized");
+    expect(profile.topPicks.map((p) => p.malId)).toContain(720);
+  });
+
+  it("learns from saves: an unseen title like the saved ones outranks one like the passed ones", async () => {
+    for (let i = 800; i < 806; i += 1) seedRow(i, `Saved ${i}`, `saved-${i}`, ["genre:SciFi", "theme:Space"]);
+    for (let i = 810; i < 814; i += 1) seedRow(i, `Passed ${i}`, `passed-${i}`, ["genre:Comedy", "theme:School"]);
+    seedRow(820, "Target SciFi", "target-scifi", ["genre:SciFi", "theme:Space"]);
+    seedRow(821, "Target Comedy", "target-comedy", ["genre:Comedy", "theme:School"]);
+
+    watchlistMalIds = new Set([800, 801, 802, 803, 804, 805]);
+    watchlistFranchiseKeys = new Set([...watchlistMalIds].map((id) => `saved-${id}`));
+    ratedMalIds = new Set([810, 811, 812, 813]);
+    ratedFranchiseKeys = new Set([...ratedMalIds].map((id) => `passed-${id}`));
+    ratings = [...ratedMalIds].map((mal_id) => ({ mal_id, reaction: "down" as const, down_reason: null }));
+
+    const { getProfile } = await import("./service.js");
+    const profile = getProfile();
+
+    expect(profile.enginePhase).toBe("personalized");
+    const order = [...profile.topPicks, ...profile.recommendations].map((p) => p.malId);
+    expect(order).toContain(820);
+    expect(order).toContain(821);
+    expect(order.indexOf(820)).toBeLessThan(order.indexOf(821));
+    // Without the saves there would be no positive class at all; the learned
+    // probability for the SciFi look-alike must sit clearly above the comedy one.
+    const scifi = [...profile.topPicks, ...profile.recommendations].find((p) => p.malId === 820)!;
+    const comedy = [...profile.topPicks, ...profile.recommendations].find((p) => p.malId === 821)!;
+    expect(scifi.matchScore).toBeGreaterThan(comedy.matchScore);
   });
 });
