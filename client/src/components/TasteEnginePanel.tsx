@@ -24,8 +24,9 @@ export function TasteEnginePanel({ taste }: TasteEnginePanelProps) {
           How your picks get smarter
         </CardTitle>
         <CardDescription>
-          Each vote trains tag weights. After {`8`} ratings, picks switch from
-          learning to personalized.
+          Every swipe trains the model: Pass and Would watch from the deck, Liked
+          it and Dropped as verdicts. After {taste.coldStartThreshold} swipes, picks
+          switch from learning to personalized.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">

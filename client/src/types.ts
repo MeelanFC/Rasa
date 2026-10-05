@@ -2,7 +2,8 @@ export const REACTIONS = ["up", "down"] as const;
 
 export type Reaction = (typeof REACTIONS)[number];
 
-export const DOWNVOTE_REASONS = ["pacing", "art", "genre", "length"] as const;
+/** `dropped` = started watching and did not finish; the others are "why" chips. */
+export const DOWNVOTE_REASONS = ["pacing", "art", "genre", "length", "dropped"] as const;
 
 export type DownvoteReason = (typeof DOWNVOTE_REASONS)[number];
 
@@ -34,6 +35,8 @@ export interface ScoredAnime extends AnimeCard {
 export interface HistoryEntry extends AnimeCard {
   reaction: Reaction;
   ratedAt: string;
+  /** Set on down votes that carried a reason; `dropped` is shown as its own verdict. */
+  downReason?: DownvoteReason | null;
 }
 
 export interface WatchlistEntry extends AnimeCard {
@@ -57,6 +60,8 @@ export interface TastePatterns {
 
 export interface TasteMetrics {
   reactionWeights: Record<Reaction, number>;
+  /** Swipes (votes or would-watch saves) before the learned model takes over. */
+  coldStartThreshold: number;
   topFeatures: Array<{ name: string; weight: number }>;
   patterns?: TastePatterns;
   signals: string[];
@@ -88,6 +93,8 @@ export interface ProfileData {
   history: HistoryEntry[];
   reactionCounts: Record<Reaction, number>;
   totalRatings: number;
+  /** Votes plus would-watch saves: every explicit swipe the engine learns from. */
+  totalSignals: number;
   taste: TasteMetrics;
   enginePhase: "learning" | "personalized";
   catalogStats?: {

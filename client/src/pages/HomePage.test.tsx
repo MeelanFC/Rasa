@@ -115,7 +115,7 @@ describe("HomePage", () => {
     await user.click(upButton);
 
     expect(upButton).toBeDisabled();
-    expect(screen.getByRole("button", { name: /Not for me/i })).toBeDisabled();
+    expect(screen.getByRole("button", { name: /^Pass/i })).toBeDisabled();
 
     await waitFor(() => expect(upButton).not.toBeDisabled(), {
       timeout: UNLOCK_TIMEOUT_MS,
@@ -147,7 +147,7 @@ describe("HomePage", () => {
     );
   });
 
-  it("calls submitWatchlist when Save for later is pressed", async () => {
+  it("calls submitWatchlist when Would watch is pressed", async () => {
     vi.spyOn(api, "fetchNextQueue").mockResolvedValue([
       createCard(1, "Cowboy Bebop"),
       createCard(2, "Trigun"),
@@ -160,7 +160,7 @@ describe("HomePage", () => {
 
     const user = userEvent.setup();
     await screen.findByRole("heading", { name: "Cowboy Bebop" });
-    await user.click(await findArmedButton(/Want to watch/i));
+    await user.click(await findArmedButton(/Would watch/i));
 
     expect(watchlistSpy).toHaveBeenCalledWith(1);
   });

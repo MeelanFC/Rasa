@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
-import { ThumbsDown, ThumbsUp } from "lucide-react";
+import { HeartCrack, ThumbsDown, ThumbsUp } from "lucide-react";
 import { fetchProfile } from "@/api";
 import { RecommendationGridCard } from "@/components/RecommendationGridCard";
 import { TasteEnginePanel } from "@/components/TasteEnginePanel";
@@ -50,14 +50,14 @@ export function ProfilePage() {
 
   if (!profileQuery.data) return null;
 
-  // Cold start: with zero votes there is no taste to show. Point to Discover
-  // instead of rendering an empty lineup.
-  if (profileQuery.data.totalRatings === 0) {
+  // Cold start: with no swipes at all there is no taste to show. Point to
+  // Discover instead of rendering an empty lineup.
+  if (profileQuery.data.totalSignals === 0) {
     return (
       <Card className="mx-auto mt-10 max-w-md border-dashed p-8 text-center">
         <h2 className="text-lg font-semibold">No taste profile yet</h2>
         <p className="mt-2 text-sm text-muted-foreground">
-          Your lineup appears here after your first few votes. Head to Discover
+          Your lineup appears here after your first few swipes. Head to Discover
           and start swiping. The engine learns from every tap.
         </p>
         <Button asChild className="mt-4">
@@ -72,7 +72,7 @@ export function ProfilePage() {
     recommendations,
     history,
     reactionCounts,
-    totalRatings,
+    totalSignals,
     taste,
     enginePhase,
     catalogStats,
@@ -86,7 +86,7 @@ export function ProfilePage() {
             Your lineup
           </h2>
           <p className="mt-1 text-sm text-muted-foreground">
-            {totalRatings} {totalRatings === 1 ? "vote" : "votes"} ·{" "}
+            {totalSignals} {totalSignals === 1 ? "swipe" : "swipes"} ·{" "}
             {enginePhase === "learning" ? "still learning" : "personalized"} · tap
             a card for details
             {catalogStats && (
@@ -179,12 +179,17 @@ export function ProfilePage() {
                   {entry.reaction === "up" ? (
                     <Badge variant="success" className="gap-1.5">
                       <ThumbsUp className="h-3 w-3" />
-                      Up
+                      Liked
+                    </Badge>
+                  ) : entry.downReason === "dropped" ? (
+                    <Badge variant="destructive" className="gap-1.5">
+                      <HeartCrack className="h-3 w-3" />
+                      Dropped
                     </Badge>
                   ) : (
                     <Badge variant="destructive" className="gap-1.5">
                       <ThumbsDown className="h-3 w-3" />
-                      Down
+                      Pass
                     </Badge>
                   )}
                 </Link>

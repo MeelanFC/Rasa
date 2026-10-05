@@ -4,7 +4,6 @@ import {
   fetchNextQueue,
   submitEngagementSignal,
   submitRating,
-  submitSkip,
   submitWatchlist,
 } from "@/api";
 import {
@@ -24,7 +23,8 @@ import { dedupeByMalId, mergeDiscoverQueue } from "@/utils/mergeDiscoverQueue";
  *  poisoned the early taste data. */
 const VOTE_ARM_DELAY_MS = 600;
 
-const VOTE_HINT_DISMISSED_KEY = "rasa.voteHintDismissed";
+// Bumped when the buttons change meaning, so the hint shows once more.
+const VOTE_HINT_DISMISSED_KEY = "rasa.voteHintDismissed.v2";
 
 function safeLocalStorage(): Pick<Storage, "getItem" | "setItem"> | null {
   try {
@@ -38,7 +38,9 @@ function safeLocalStorage(): Pick<Storage, "getItem" | "setItem"> | null {
 export function HomePage() {
   const queryClient = useQueryClient();
   const [localQueue, setLocalQueue] = useState<AnimeCard[]>([]);
-  const [votesArmed, setVotesArmed] = useState(false);
+  // The card whose votes are armed. Any other card reads as disarmed, so a new
+  // card needs no state reset; only the arm timer below re-enables voting.
+  const [armedMalId, setArmedMalId] = useState<number | null>(null);
   const [showVoteHint, setShowVoteHint] = useState(
     () => safeLocalStorage()?.getItem(VOTE_HINT_DISMISSED_KEY) !== "1",
   );
@@ -47,7 +49,7 @@ export function HomePage() {
 
   const excludedFromDiscoverRef = useRef<Set<number>>(new Set());
   const voteGuardRef = useRef(false);
-  const cardShownAtRef = useRef(Date.now());
+  const cardShownAtRef = useRef(0); // set when a card is shown
   const lastCardMalIdRef = useRef<number | null>(null);
   const votedMalIdRef = useRef<number | null>(null);
 
@@ -109,30 +111,20 @@ export function HomePage() {
     },
   });
 
-  const skipMutation = useMutation({
-    mutationFn: ({ malId, dwellMs }: { malId: number; dwellMs: number }) =>
-      submitSkip(malId, dwellMs),
-    onSuccess: (serverQueue) => {
-      const dedupedServer = dedupeByMalId(serverQueue);
-      queryClient.setQueryData(["next-queue"], dedupedServer);
-      setLocalQueue((current) =>
-        mergeDiscoverQueue(dedupedServer, current, excludedFromDiscoverRef.current),
-      );
-    },
-  });
-
   const current = localQueue[0];
+  const currentMalId = current?.malId;
   const upcoming = useMemo(() => localQueue.slice(1), [localQueue]);
+  const votesArmed = currentMalId !== undefined && armedMalId === currentMalId;
 
   useEffect(() => {
-    if (!current) {
+    if (currentMalId === undefined) {
       return;
     }
 
     const previousMalId = lastCardMalIdRef.current;
     if (
       previousMalId !== null &&
-      previousMalId !== current.malId &&
+      previousMalId !== currentMalId &&
       votedMalIdRef.current !== previousMalId
     ) {
       const dwellMs = Date.now() - cardShownAtRef.current;
@@ -141,14 +133,13 @@ export function HomePage() {
       });
     }
 
-    lastCardMalIdRef.current = current.malId;
+    lastCardMalIdRef.current = currentMalId;
     cardShownAtRef.current = Date.now();
     votedMalIdRef.current = null;
 
-    setVotesArmed(false);
-    const armTimer = window.setTimeout(() => setVotesArmed(true), VOTE_ARM_DELAY_MS);
+    const armTimer = window.setTimeout(() => setArmedMalId(currentMalId), VOTE_ARM_DELAY_MS);
     return () => window.clearTimeout(armTimer);
-  }, [current?.malId]);
+  }, [currentMalId]);
 
   useEffect(() => {
     upcoming.forEach((card) => {
@@ -160,13 +151,19 @@ export function HomePage() {
   // After an action the server may return an empty queue (refill in progress,
   // e.g. right after a restart). Poll until cards arrive instead of stranding
   // the user on a skeleton - and never roll a rated card back onto the deck.
+  const {
+    refetch: refetchQueue,
+    isLoading: queueLoading,
+    isFetching: queueFetching,
+    dataUpdatedAt: queueUpdatedAt,
+  } = nextQuery;
   useEffect(() => {
-    if (current || nextQuery.isLoading || nextQuery.isFetching) return;
+    if (current || queueLoading || queueFetching) return;
     const pollTimer = window.setTimeout(() => {
-      void nextQuery.refetch();
+      void refetchQueue();
     }, 1_500);
     return () => window.clearTimeout(pollTimer);
-  }, [current, nextQuery.isLoading, nextQuery.isFetching, nextQuery.dataUpdatedAt]);
+  }, [current, queueLoading, queueFetching, queueUpdatedAt, refetchQueue]);
 
   const rollbackDiscoverAction = (card: AnimeCard) => {
     excludedFromDiscoverRef.current.delete(card.malId);
@@ -224,32 +221,6 @@ export function HomePage() {
         void nextQuery.refetch();
       },
     });
-  };
-
-  const handleSkip = () => {
-    if (!current || votesLocked || voteGuardRef.current) return;
-    voteGuardRef.current = true;
-
-    const cardSnapshot = current;
-    const skippedId = current.malId;
-    const dwellMs = Date.now() - cardShownAtRef.current;
-    // The skip endpoint records the engagement signal itself; mark the card as
-    // handled so the card-change effect doesn't send a duplicate signal.
-    votedMalIdRef.current = skippedId;
-    beginTransition(cardSnapshot);
-    excludedFromDiscoverRef.current.add(skippedId);
-    setLocalQueue((queue) => queue.filter((card) => card.malId !== skippedId));
-    skipMutation.mutate(
-      { malId: skippedId, dwellMs },
-      {
-        onError: () => {
-          votedMalIdRef.current = null;
-          resetTransition();
-          rollbackDiscoverAction(cardSnapshot);
-          void nextQuery.refetch();
-        },
-      },
-    );
   };
 
   const displayCard = resolveDisplayCard(current);
@@ -326,9 +297,9 @@ export function HomePage() {
           data-testid="vote-hint"
         >
           <span>
-            Buttons mean exactly one thing now. Use <strong>Don&apos;t know it</strong>{" "}
-            for titles you&apos;ve never heard of, so they don&apos;t count against your
-            taste like a real dislike does.
+            Judge each card from its poster and synopsis: <strong>Pass</strong> or{" "}
+            <strong>Would watch</strong>. Already seen it? <strong>Liked it</strong> or{" "}
+            <strong>Dropped</strong>. Every tap trains your picks.
           </span>
           <Button
             type="button"
@@ -351,7 +322,6 @@ export function HomePage() {
           disabled={votesLocked || !votesArmed}
           onVote={handleVote}
           onWatchlist={handleWatchlist}
-          onSkip={handleSkip}
         />
       </div>
 

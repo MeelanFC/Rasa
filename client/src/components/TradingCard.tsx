@@ -5,6 +5,11 @@ import { Bookmark, Sparkles, ThumbsDown, ThumbsUp } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { submitRating, submitWatchlist } from "@/api";
+import {
+  isHoverSuppressed,
+  releaseHoverSuppression,
+  suppressHoverUntilLeave,
+} from "@/utils/hoverSuppression";
 import { matchDisplay } from "@/utils/matchDisplay";
 import type { ScoredAnime, Reaction } from "@/types";
 
@@ -38,18 +43,14 @@ export function TradingCard({ anime, rank }: TradingCardProps) {
   const handleVote = (e: React.MouseEvent, reaction: Reaction) => {
     e.preventDefault();
     e.stopPropagation();
-    if (typeof window !== "undefined") {
-      (window as any).__suppressHoverUntilLeave = true;
-    }
+    suppressHoverUntilLeave();
     rateMutation.mutate({ malId: anime.malId, reaction });
   };
 
   const handleWatchlist = (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    if (typeof window !== "undefined") {
-      (window as any).__suppressHoverUntilLeave = true;
-    }
+    suppressHoverUntilLeave();
     watchlistMutation.mutate(anime.malId);
   };
 
@@ -63,13 +64,11 @@ export function TradingCard({ anime, rank }: TradingCardProps) {
 
   const handleMouseLeave = () => {
     setIsHovered(false);
-    if (typeof window !== "undefined") {
-      (window as any).__suppressHoverUntilLeave = false;
-    }
+    releaseHoverSuppression();
   };
 
   const checkHoverActive = () => {
-    if (typeof window !== "undefined" && (window as any).__suppressHoverUntilLeave) {
+    if (isHoverSuppressed()) {
       setIsHovered(false);
       return;
     }
@@ -104,7 +103,7 @@ export function TradingCard({ anime, rank }: TradingCardProps) {
                 onClick={(e) => handleVote(e, "down")}
                 disabled={isVoting}
                 className="p-2.5 rounded-full bg-destructive/90 hover:bg-destructive text-white hover:scale-110 active:scale-95 transition-all shadow-md hover:shadow-destructive/30 border border-destructive/20 disabled:opacity-50"
-                title="Not for me"
+                title="Pass"
               >
                 <ThumbsDown className="h-4 w-4" />
               </button>
@@ -113,7 +112,7 @@ export function TradingCard({ anime, rank }: TradingCardProps) {
                 onClick={(e) => handleWatchlist(e)}
                 disabled={isVoting}
                 className="p-2.5 rounded-full bg-secondary hover:bg-muted text-white hover:scale-110 active:scale-95 transition-all shadow-md border border-border/50 disabled:opacity-50"
-                title="Save for later"
+                title="Would watch"
               >
                 <Bookmark className="h-4 w-4" />
               </button>
@@ -122,7 +121,7 @@ export function TradingCard({ anime, rank }: TradingCardProps) {
                 onClick={(e) => handleVote(e, "up")}
                 disabled={isVoting}
                 className="p-2.5 rounded-full bg-success/90 hover:bg-success text-white hover:scale-110 active:scale-95 transition-all shadow-md hover:shadow-success/30 border border-success/20 disabled:opacity-50"
-                title="I'd watch this"
+                title="Liked it"
               >
                 <ThumbsUp className="h-4 w-4" />
               </button>

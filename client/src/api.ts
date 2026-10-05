@@ -93,19 +93,6 @@ export async function submitRating(
   return queue;
 }
 
-export async function submitSkip(
-  malId: number,
-  dwellMs = 0,
-): Promise<AnimeCard[]> {
-  const response = await fetch("/api/skip", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ malId, dwellMs }),
-  });
-  const { queue } = await parseJson<{ queue: AnimeCard[] }>(response);
-  return queue;
-}
-
 export async function submitEngagementSignal(
   malId: number,
   dwellMs: number,
